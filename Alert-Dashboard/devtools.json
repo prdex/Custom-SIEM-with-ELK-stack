@@ -1,0 +1,194 @@
+#DELETE kibana_alerts*
+#DELETE _watcher/watch/load_kibana_alert_metadata
+#DELETE _watcher/watch/load_kibana_alert_history
+
+PUT _index_template/kibana_alerts-actions
+  {"priority": 1,
+  "index_patterns": [
+    "kibana_alerts_actions*"
+  ],
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": "1"
+      }
+    },
+    "mappings" : {
+        "properties" : {
+            "@timestamp" : { "type" : "date" },
+            "id" : { "type" : "keyword" },
+            "name" : { "type" : "keyword" },
+            "alert_instance_id" : { "type" : "keyword" },
+            "type": { "type" : "keyword" },
+            "context_message": { "type" : "text" },
+            "reason": { "type" : "text" }
+        }
+    }
+}
+}
+
+PUT _index_template/kibana_alerts-history
+{
+  "priority": 1,
+  "index_patterns": [
+    "kibana_alerts_history*"
+  ],
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": "1"
+      }
+    },
+    "mappings" : {
+        "properties" : {
+            "id" : { "type" : "keyword" },
+            "name" : { "type" : "keyword" },
+            "status" : { "type" : "keyword" },
+            "type": { "type" : "keyword" },
+            "enabled" : { "type" : "keyword" },
+            "executionAt": { "type" : "date" }
+        }
+    }
+}
+}
+
+PUT _index_template/kibana_alerts-meta
+{
+  "priority": 1,
+  "index_patterns": [
+    "kibana_alerts_meta*"
+  ],
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": "1"
+      }
+    },
+    "mappings" : {
+        "properties" : {
+            "id" : { "type" : "keyword" },
+            "name" : { "type" : "keyword" },
+            "lastStatus" : { "type" : "keyword" },
+            "type": { "type" : "keyword" },
+            "alertType" : { "type" : "keyword" },
+            "consumer" : { "type" : "keyword" },
+            "createdBy" : { "type" : "keyword" },
+            "updatedBy" : { "type" : "keyword" },
+            "enabled" : { "type" : "keyword" },
+            "lastExecution": { "type" : "date" },
+            "updatedAt": { "type" : "date" },
+            "createdAt": { "type" : "date" }
+        }
+    }
+}
+}
+
+
+PUT _watcher/watch/load_kibana_alert_metadata
+{
+  "trigger": {
+    "schedule": {
+      "interval": "1h"
+    }
+  },
+  "input": {
+    "http": {
+      "request": {
+        "scheme": "https",
+        "host": "<Kibana Endpoint>",
+        "port": 9243,
+        "method": "get",
+        "path": "/s/kibana-features/api/alerts/_find",
+        "params": {
+          "per_page": "500",
+          "page": "1"
+        },
+        "headers": {},
+        "auth": {
+          "basic": {
+            "username": "<username>",
+            "password": "<password>"
+          }
+        }
+      }
+    }
+  },
+  "condition": {
+    "always": {}
+  },
+  "actions": {
+    "index_payload": {
+      "index": {
+        "index": "kibana_alerts_meta"
+      }
+    }
+  },
+  "transform": {
+    "script": {
+     "source": "\n          HashMap final = new HashMap();\n          def docs = [];\n\n            ctx.payload.data.stream()\n            .forEach(e -> {\n                  docs.add([\n                    \"_id\": e.id,\n                    \"id\": e.id,\n                    \"name\": e.name,\n                    \"enabled\": e.enabled,\n                    \"updatedAt\": e.updatedAt,\n                    \"createdAt\": e.createdAt,\n                    \"type\": \"meta\",\n                    \"alertType\": e.alertTypeId,\n                    \"consumer\": e.consumer,\n                    \"createdBy\": e.createdBy,\n                    \"updatedBy\": e.updatedBy,\n                    \"lastExecution\": e.executionStatus?.lastExecutionDate,\n                    \"lastStatus\": e.executionStatus?.status,\n                    \"@timestamp\": e.executionStatus?.lastExecutionDate\n                  ]);\n            });\n            return ['_doc' : docs];\n\n          ",
+      "lang": "painless"
+    }
+  },
+  "metadata": {
+    "xpack": {
+      "type": "json"
+    },
+    "name": "Load Kibana Alert Metadata"
+  }
+}
+
+PUT _watcher/watch/load_kibana_alert_history
+{
+  "trigger": {
+    "schedule": {
+      "interval": "10s"
+    }
+  },
+  "input": {
+    "http": {
+      "request": {
+        "scheme": "https",
+        "host": "<Kibana endpoint>",
+        "port": 9243,
+        "method": "get",
+        "path": "/s/kibana-features/api/alerts/_find",
+        "params": {
+          "per_page": "500",
+          "page": "1"
+        },
+        "headers": {},
+        "auth": {
+          "basic": {
+            "username": "<username>",
+            "password": "<password>"
+          }
+        }
+      }
+    }
+  },
+  "condition": {
+    "always": {}
+  },
+  "actions": {
+    "index_payload": {
+      "index": {
+        "index": "kibana_alerts_history"
+      }
+    }
+  },
+  "transform": {
+    "script": {
+      "source": "\n          HashMap final = new HashMap();\n          def docs = [];\n\n            ctx.payload.data.stream()\n            .forEach(e -> {\n                  docs.add([\n                    \"id\": e.id,\n                    \"name\": e.name,\n                    \"type\": \"history\",\n                    \"alertType\": e.alertTypeId,\n                    \"enabled\": e.enabled,\n                    \"executionAt\": e.executionStatus?.lastExecutionDate,\n                    \"status\": e.executionStatus?.status,\n                    \"@timestamp\": e.executionStatus?.lastExecutionDate\n                  ]);\n            });\n            return ['_doc' : docs];\n\n          ",
+      "lang": "painless"
+    }
+  },
+  "metadata": {
+    "xpack": {
+      "type": "json"
+    },
+    "name": "Load Kibana Alert History"
+  }
+}
+
+POST _watcher/watch/load_kibana_alert_metadata/_execute
+POST _watcher/watch/load_kibana_alert_history/_execute
